@@ -11,7 +11,11 @@ app.use(express.static(path.join(__dirname, 'public')));
 // clé/valeur (facile à migrer vers SQLite/MongoDB plus tard,
 // il suffira de remplacer readStore()/writeStore()).
 // ---------------------------------------------------------
-const DATA_DIR = path.join(__dirname, 'data');
+// En local, les données sont stockées dans ./data
+// En production sur Render, la variable d'environnement DATA_DIR pointera
+// vers le disque persistant (ex: /var/data) pour que rien ne soit perdu
+// entre deux mises à jour.
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const DB_FILE = path.join(DATA_DIR, 'store.json');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
