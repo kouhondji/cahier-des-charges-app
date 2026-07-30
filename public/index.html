@@ -1,0 +1,914 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CDC — Système de cahiers des charges</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#141F2B;
+    --ink-2:#1D2E3F;
+    --blueprint:#24405B;
+    --line:#6FA8C7;
+    --line-dim:#3C5A72;
+    --paper:#FBF8F1;
+    --paper-2:#F2ECDD;
+    --paper-line:#DCD2B8;
+    --ink-text:#20242A;
+    --mist:#93AAC0;
+    --amber:#E2A63B;
+    --amber-dim:#8A6A2D;
+    --red:#C6553D;
+    --green:#4F8F6B;
+    --radius:2px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--ink);
+    color:var(--paper);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{min-height:100vh;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  button{font-family:inherit;cursor:pointer;}
+  input,textarea,select{font-family:'Inter',sans-serif;}
+
+  /* ---------- crosshair corner marks ---------- */
+  .doc{position:relative;}
+  .doc::before,.doc::after,.doc .cx1,.doc .cx2{content:"";position:absolute;width:10px;height:10px;pointer-events:none;}
+  .doc::before{top:-1px;left:-1px;border-top:1.5px solid currentColor;border-left:1.5px solid currentColor;}
+  .doc::after{top:-1px;right:-1px;border-top:1.5px solid currentColor;border-right:1.5px solid currentColor;}
+  .doc .cx1{bottom:-1px;left:-1px;border-bottom:1.5px solid currentColor;border-left:1.5px solid currentColor;}
+  .doc .cx2{bottom:-1px;right:-1px;border-bottom:1.5px solid currentColor;border-right:1.5px solid currentColor;}
+
+  /* ---------- HOME (split screen) ---------- */
+  .home{display:flex;min-height:100vh;flex-wrap:wrap;}
+  .home-band{
+    position:fixed;top:0;left:0;right:0;padding:14px 24px;
+    display:flex;justify-content:space-between;align-items:center;
+    font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--mist);border-bottom:1px solid var(--line-dim);
+    background:var(--ink);z-index:5;
+  }
+  .home-panels{display:flex;width:100%;padding-top:52px;min-height:100vh;}
+  .panel{flex:1;min-width:320px;padding:80px 48px;display:flex;flex-direction:column;justify-content:center;position:relative;}
+  .panel-agence{background:var(--ink);color:var(--paper);}
+  .panel-client{background:var(--paper);color:var(--ink-text);}
+  .panel h2{font-family:'IBM Plex Mono';font-size:13px;letter-spacing:.16em;text-transform:uppercase;margin:0 0 18px;color:var(--line);}
+  .panel-client h2{color:var(--amber-dim);}
+  .panel h1{font-size:34px;line-height:1.15;margin:0 0 18px;font-weight:800;max-width:420px;}
+  .panel p{font-size:15px;line-height:1.6;max-width:420px;color:var(--mist);margin:0 0 32px;}
+  .panel-client p{color:#6B6455;}
+  .btn{
+    align-self:flex-start;border:1px solid currentColor;background:transparent;
+    padding:13px 26px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;
+    font-family:'IBM Plex Mono';font-weight:500;transition:all .15s ease;
+  }
+  .btn-line{color:var(--line);}
+  .btn-line:hover{background:var(--line);color:var(--ink);}
+  .btn-amber{color:var(--amber-dim);border-color:var(--amber-dim);}
+  .btn-amber:hover{background:var(--amber-dim);color:var(--paper);}
+  .btn-primary{background:var(--amber);color:var(--ink);border-color:var(--amber);}
+  .btn-primary:hover{background:#f0b654;}
+  .btn-dark{background:var(--line);color:var(--ink);border-color:var(--line);}
+  .btn-ghost{color:var(--mist);border-color:var(--line-dim);}
+  .btn-ghost:hover{color:var(--paper);border-color:var(--line);}
+  .btn-danger{color:var(--red);border-color:var(--red);}
+  .btn-danger:hover{background:var(--red);color:var(--paper);}
+  .btn:disabled{opacity:.4;cursor:not-allowed;}
+  .btn-sm{padding:7px 14px;font-size:11px;}
+
+  /* ---------- shared shell ---------- */
+  .shell{min-height:100vh;background:var(--ink);}
+  .topbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:16px 28px;border-bottom:1px solid var(--line-dim);
+  }
+  .brand{display:flex;align-items:center;gap:10px;color:var(--paper);}
+  .brand .dot{width:8px;height:8px;background:var(--amber);}
+  .brand-text{font-family:'IBM Plex Mono';font-size:13px;letter-spacing:.1em;text-transform:uppercase;}
+  .tabs{display:flex;gap:2px;padding:0 28px;margin-top:14px;}
+  .tab{
+    padding:10px 20px;font-family:'IBM Plex Mono';font-size:12px;letter-spacing:.06em;
+    text-transform:uppercase;color:var(--mist);background:var(--ink-2);border:1px solid var(--line-dim);
+    border-bottom:none;cursor:pointer;
+  }
+  .tab.active{color:var(--ink);background:var(--line);border-color:var(--line);}
+  .content{padding:28px;max-width:980px;margin:0 auto;}
+
+  /* card */
+  .card{
+    background:var(--ink-2);border:1px solid var(--line-dim);color:var(--paper);
+    padding:22px;margin-bottom:16px;
+  }
+  .card-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px;}
+  .card-title{font-size:17px;font-weight:700;margin:0 0 4px;}
+  .card-meta{font-family:'IBM Plex Mono';font-size:11px;color:var(--mist);letter-spacing:.05em;}
+  .badge{
+    font-family:'IBM Plex Mono';font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    padding:4px 9px;border:1px solid; white-space:nowrap;
+  }
+  .badge-wait{color:var(--amber);border-color:var(--amber);}
+  .badge-done{color:var(--green);border-color:var(--green);}
+  .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;}
+
+  .empty{
+    border:1px dashed var(--line-dim);padding:40px 20px;text-align:center;color:var(--mist);
+    font-family:'IBM Plex Mono';font-size:13px;letter-spacing:.03em;
+  }
+
+  /* form fields (admin) */
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-family:'IBM Plex Mono';font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--mist);margin-bottom:6px;}
+  .field input[type=text],.field textarea,.field select{
+    width:100%;background:var(--ink);border:1px solid var(--line-dim);color:var(--paper);
+    padding:10px 12px;font-size:14px;border-radius:var(--radius);
+  }
+  .field input:focus,.field textarea:focus,.field select:focus{outline:none;border-color:var(--line);}
+  .field textarea{min-height:70px;resize:vertical;}
+  .hint{font-size:11px;color:var(--mist);margin-top:5px;}
+
+  /* question editor rows */
+  .qrow{border:1px solid var(--line-dim);padding:14px;margin-bottom:10px;background:var(--ink);position:relative;}
+  .qrow.section-row{border-style:dashed;background:transparent;}
+  .qrow-top{display:flex;gap:10px;align-items:flex-start;margin-bottom:8px;}
+  .qrow-top select{width:150px;flex-shrink:0;background:var(--ink-2);border:1px solid var(--line-dim);color:var(--paper);padding:8px;font-size:12px;font-family:'IBM Plex Mono';}
+  .qrow-top input{flex:1;background:var(--ink-2);border:1px solid var(--line-dim);color:var(--paper);padding:8px 10px;font-size:14px;}
+  .qrow-actions{display:flex;gap:6px;}
+  .icon-btn{background:none;border:1px solid var(--line-dim);color:var(--mist);width:30px;height:30px;font-size:13px;}
+  .icon-btn:hover{color:var(--paper);border-color:var(--line);}
+  .qrow-opts textarea{width:100%;background:var(--ink-2);border:1px solid var(--line-dim);color:var(--paper);padding:8px 10px;font-size:13px;min-height:56px;}
+  .req-toggle{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--mist);font-family:'IBM Plex Mono';margin-top:8px;}
+
+  /* ---------- CLIENT (paper) ---------- */
+  .paper-shell{min-height:100vh;background:var(--paper);color:var(--ink-text);}
+  .paper-top{
+    display:flex;justify-content:space-between;align-items:center;padding:16px 28px;
+    border-bottom:1px solid var(--paper-line);
+  }
+  .paper-content{max-width:720px;margin:0 auto;padding:40px 24px 80px;}
+  .code-box{max-width:420px;margin:60px auto;text-align:center;}
+  .code-box input{
+    width:100%;text-align:center;letter-spacing:.3em;font-family:'IBM Plex Mono';font-size:20px;
+    text-transform:uppercase;padding:16px;border:1px solid var(--paper-line);background:var(--paper-2);
+    color:var(--ink-text);margin:18px 0;
+  }
+  .code-box input:focus{outline:none;border-color:var(--amber-dim);}
+  .error-msg{color:var(--red);font-size:13px;margin-top:10px;font-family:'IBM Plex Mono';}
+
+  .spec-head{
+    border:1px solid var(--paper-line);padding:22px 24px;margin-bottom:28px;background:var(--paper-2);color:#4a4535;
+  }
+  .spec-head .doc-no{font-family:'IBM Plex Mono';font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--amber-dim);margin-bottom:10px;}
+  .spec-head h1{font-size:26px;margin:0 0 10px;color:var(--ink-text);}
+  .spec-head p{font-size:14px;line-height:1.6;margin:0;color:#665F4D;}
+
+  .section-div{
+    font-family:'IBM Plex Mono';font-size:12px;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--amber-dim);margin:34px 0 16px;padding-bottom:8px;border-bottom:1px solid var(--paper-line);
+  }
+  .pfield{margin-bottom:22px;}
+  .pfield label{display:block;font-size:15px;font-weight:600;margin-bottom:8px;color:var(--ink-text);}
+  .pfield .req{color:var(--red);margin-left:3px;}
+  .pfield input[type=text],.pfield textarea,.pfield select{
+    width:100%;border:1px solid var(--paper-line);background:#fff;color:var(--ink-text);
+    padding:11px 13px;font-size:14px;font-family:'Inter';
+  }
+  .pfield textarea{min-height:90px;resize:vertical;}
+  .pfield input:focus,.pfield textarea:focus,.pfield select:focus{outline:none;border-color:var(--amber-dim);}
+  .check-opt{display:flex;align-items:center;gap:8px;padding:8px 0;font-size:14px;}
+
+  .stamp{
+    display:inline-block;font-family:'IBM Plex Mono';font-weight:700;letter-spacing:.1em;
+    padding:10px 18px;border:2px solid var(--green);color:var(--green);transform:rotate(-3deg);
+    text-transform:uppercase;font-size:13px;
+  }
+
+  .link-inline{color:var(--line);text-decoration:underline;cursor:pointer;background:none;border:none;font-family:inherit;font-size:inherit;padding:0;}
+  .paper-link{color:var(--amber-dim);text-decoration:underline;cursor:pointer;background:none;border:none;font-family:inherit;font-size:13px;padding:0;}
+
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+    background:var(--line);color:var(--ink);padding:11px 20px;font-family:'IBM Plex Mono';
+    font-size:12px;letter-spacing:.05em;z-index:50;box-shadow:0 4px 20px rgba(0,0,0,.3);
+  }
+  .modal-bg{position:fixed;inset:0;background:rgba(10,15,20,.7);display:flex;align-items:center;justify-content:center;z-index:40;padding:20px;}
+  .modal{background:var(--ink-2);border:1px solid var(--line);padding:26px;max-width:440px;width:100%;color:var(--paper);}
+  .modal h3{margin:0 0 16px;font-size:16px;}
+
+  @media(max-width:720px){
+    .panel{padding:50px 24px;}
+    .panel h1{font-size:26px;}
+    .content{padding:18px;}
+    .qrow-top{flex-wrap:wrap;}
+    .qrow-top select{width:100%;}
+  }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+/* ===================== STATE ===================== */
+let state = {
+  loaded:false,
+  view:'home', // home | admin-gate | admin | client-code | client-form | client-done
+  templates:[],
+  projects:[],
+  adminPass:null,
+  sessionAdminOK:false,
+  adminTab:'projects', // projects | templates
+  editingTemplate:null, // working copy
+  gateMode:'set', // set | enter
+  gateError:'',
+  newProjectOpen:false,
+  clientError:'',
+  clientProject:null,
+  clientTemplate:null,
+  toast:null,
+  confirmModal:null,
+};
+
+const uid = (p='id') => p+'_'+Math.random().toString(36).slice(2,9);
+const genCode = () => Array.from({length:6},()=>'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random()*32)]).join('');
+
+function defaultTemplate(){
+  const q = (type,label,extra={}) => ({id:uid('q'),type,label,required:false,options:[],...extra});
+  return {
+    id: uid('tpl'),
+    name: 'Site web / Application — cahier des charges standard',
+    description: "Modèle de base pour cadrer un projet de développement web ou logiciel.",
+    createdAt: Date.now(),
+    questions: [
+      q('section','1. Présentation du projet'),
+      q('text','Nom du projet',{required:true}),
+      q('textarea','Décrivez votre activité et le projet en quelques phrases',{required:true}),
+      q('select','Type de projet',{required:true,options:['Site vitrine','Site e-commerce','Application web','Application mobile','Refonte d\'un existant','Autre']}),
+      q('textarea','Quel est l\'objectif principal de ce projet ?',{required:true}),
+
+      q('section','2. Public cible'),
+      q('textarea','Qui sont vos utilisateurs ou clients principaux ?'),
+      q('text','Zone géographique visée'),
+
+      q('section','3. Fonctionnalités'),
+      q('textarea','Quelles fonctionnalités sont indispensables ?',{required:true}),
+      q('textarea','Quelles fonctionnalités seraient un plus, si le budget le permet ?'),
+      q('textarea','Avez-vous des exemples de sites ou applications que vous aimez ? (liens bienvenus)'),
+
+      q('section','4. Contenu et identité visuelle'),
+      q('select','Avez-vous déjà une charte graphique (logo, couleurs, typographies) ?',{options:['Oui, complète','Oui, partielle','Non, à créer']}),
+      q('select','Le contenu (textes, images) est-il déjà prêt ?',{options:['Oui','En cours de préparation','Non']}),
+
+      q('section','5. Aspects techniques'),
+      q('select','Avez-vous déjà un nom de domaine et un hébergement ?',{options:['Oui, les deux','Nom de domaine seulement','Aucun des deux']}),
+      q('textarea','Intégrations nécessaires (paiement, CRM, newsletter, API...)'),
+      q('textarea','Contraintes techniques particulières'),
+
+      q('section','6. Budget et délais'),
+      q('select','Budget envisagé',{options:['< 2 000 €','2 000 – 5 000 €','5 000 – 15 000 €','15 000 € et +','À définir ensemble']}),
+      q('text','Date de lancement souhaitée'),
+
+      q('section','7. Autres informations'),
+      q('textarea','Tout élément complémentaire utile à la compréhension du projet'),
+    ]
+  };
+}
+
+/* ===================== STORAGE ===================== */
+/* On parle ici à notre propre API Express (server.js) au lieu du
+   stockage d'artefact Claude. Le fichier data/store.json côté
+   serveur fait office de base de données clé/valeur. */
+async function apiGet(key){
+  const r = await fetch('/api/storage/' + encodeURIComponent(key));
+  if (r.status === 404) throw new Error('not_found');
+  if (!r.ok) throw new Error('http_error');
+  const data = await r.json();
+  return data.value;
+}
+async function apiSet(key, value){
+  const r = await fetch('/api/storage/' + encodeURIComponent(key), {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ value })
+  });
+  if (!r.ok) throw new Error('http_error');
+}
+
+async function loadData(){
+  try{
+    state.templates = await apiGet('cdc:templates');
+  }catch(e){
+    state.templates = [defaultTemplate()];
+    await apiSet('cdc:templates', state.templates);
+  }
+  try{
+    state.projects = await apiGet('cdc:projects');
+  }catch(e){
+    state.projects = [];
+    await apiSet('cdc:projects', state.projects);
+  }
+  try{
+    state.adminPass = await apiGet('cdc:admin-pass');
+  }catch(e){
+    state.adminPass = null;
+  }
+  state.loaded = true;
+  render();
+}
+
+async function saveTemplates(){
+  try{ await apiSet('cdc:templates', state.templates); }
+  catch(e){ showToast('Erreur de sauvegarde — réessayez.'); }
+}
+async function saveProjects(){
+  try{ await apiSet('cdc:projects', state.projects); }
+  catch(e){ showToast('Erreur de sauvegarde — réessayez.'); }
+}
+async function saveAdminPass(){
+  try{ await apiSet('cdc:admin-pass', state.adminPass); }
+  catch(e){ showToast('Erreur de sauvegarde — réessayez.'); }
+}
+
+function showToast(msg){
+  state.toast = msg;
+  render();
+  setTimeout(()=>{ state.toast=null; render(); }, 2600);
+}
+
+/* ===================== HELPERS ===================== */
+function esc(s){
+  return (s??'').toString().replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function fmtDate(ts){
+  if(!ts) return '—';
+  const d = new Date(ts);
+  return d.toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'});
+}
+
+/* ===================== RENDER ROOT ===================== */
+function render(){
+  const app = document.getElementById('app');
+  if(!state.loaded){
+    app.innerHTML = `<div class="shell" style="display:flex;align-items:center;justify-content:center;">
+      <div class="mono" style="color:var(--mist);font-size:13px;letter-spacing:.1em;">CHARGEMENT…</div>
+    </div>`;
+    return;
+  }
+  let html = '';
+  switch(state.view){
+    case 'home': html = renderHome(); break;
+    case 'admin-gate': html = renderAdminGate(); break;
+    case 'admin': html = renderAdmin(); break;
+    case 'client-code': html = renderClientCode(); break;
+    case 'client-form': html = renderClientForm(); break;
+    case 'client-done': html = renderClientDone(); break;
+  }
+  if(state.toast) html += `<div class="toast mono">${esc(state.toast)}</div>`;
+  if(state.confirmModal) html += renderConfirmModal();
+  app.innerHTML = html;
+  bindGlobalEvents();
+}
+
+/* ===================== HOME ===================== */
+function renderHome(){
+  return `
+  <div class="home-band mono">
+    <span>CDC · SYSTÈME DE CAHIERS DES CHARGES</span>
+    <span>DOC-INDEX / ${state.templates.length} MODÈLE${state.templates.length>1?'S':''}</span>
+  </div>
+  <div class="home-panels">
+    <div class="panel panel-agence doc">
+      <div class="cx1"></div><div class="cx2"></div>
+      <h2>Espace agence</h2>
+      <h1>Créez vos modèles, générez des projets, consultez les réponses.</h1>
+      <p>Construisez des cahiers des charges réutilisables et suivez chaque projet client depuis un tableau de bord unique.</p>
+      <button class="btn btn-line" data-action="go-admin">Entrer dans l'espace agence →</button>
+    </div>
+    <div class="panel panel-client doc">
+      <div class="cx1"></div><div class="cx2"></div>
+      <h2>Espace client</h2>
+      <h1>Répondez au cahier des charges de votre projet.</h1>
+      <p>Vous avez reçu un code de projet de la part de votre agence ? Saisissez-le pour accéder à votre questionnaire.</p>
+      <button class="btn btn-amber" data-action="go-client">Répondre à un cahier des charges →</button>
+    </div>
+  </div>`;
+}
+
+/* ===================== ADMIN GATE ===================== */
+function renderAdminGate(){
+  const isSetup = !state.adminPass;
+  return `
+  <div class="shell" style="display:flex;align-items:center;justify-content:center;">
+    <div class="card doc" style="max-width:380px;width:100%;">
+      <div class="cx1"></div><div class="cx2"></div>
+      <div class="card-meta mono" style="margin-bottom:6px;">ESPACE AGENCE</div>
+      <h3 style="margin:0 0 14px;">${isSetup ? 'Créez un code d\'accès' : 'Code d\'accès requis'}</h3>
+      ${isSetup ? `<p style="font-size:13px;color:var(--mist);line-height:1.5;margin:0 0 16px;">Ce code protège l'accès à votre tableau de bord. Choisissez-en un simple à retenir — il n'est pas récupérable en cas d'oubli.</p>` : ''}
+      <div class="field">
+        <input type="text" id="gate-pass" placeholder="Code d'accès" style="width:100%;background:var(--ink);border:1px solid var(--line-dim);color:var(--paper);padding:11px;font-size:14px;" />
+      </div>
+      ${isSetup ? `<div class="field"><input type="text" id="gate-pass-confirm" placeholder="Confirmez le code" style="width:100%;background:var(--ink);border:1px solid var(--line-dim);color:var(--paper);padding:11px;font-size:14px;" /></div>` : ''}
+      ${state.gateError ? `<div class="error-msg">${esc(state.gateError)}</div>` : ''}
+      <div class="row">
+        <button class="btn btn-primary btn-sm" data-action="${isSetup?'gate-set':'gate-enter'}">${isSetup?'Créer et entrer':'Entrer'}</button>
+        <button class="btn btn-ghost btn-sm" data-action="go-home">← Retour</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ===================== ADMIN ===================== */
+function renderAdmin(){
+  if(state.editingTemplate) return renderTemplateEditor();
+  return `
+  <div class="shell">
+    <div class="topbar">
+      <div class="brand"><span class="dot"></span><span class="brand-text">Espace agence</span></div>
+      <button class="btn btn-ghost btn-sm" data-action="go-home">Quitter</button>
+    </div>
+    <div class="tabs">
+      <div class="tab ${state.adminTab==='projects'?'active':''}" data-action="admin-tab" data-tab="projects">Projets</div>
+      <div class="tab ${state.adminTab==='templates'?'active':''}" data-action="admin-tab" data-tab="templates">Modèles</div>
+    </div>
+    <div class="content">
+      ${state.adminTab==='projects' ? renderProjectsTab() : renderTemplatesTab()}
+    </div>
+  </div>`;
+}
+
+function renderProjectsTab(){
+  const list = [...state.projects].sort((a,b)=>b.createdAt-a.createdAt);
+  return `
+    <div class="row" style="margin:0 0 20px;">
+      <button class="btn btn-primary btn-sm" data-action="new-project-toggle">${state.newProjectOpen?'Annuler':'+ Nouveau projet'}</button>
+    </div>
+    ${state.newProjectOpen ? renderNewProjectForm() : ''}
+    ${list.length===0 ? `<div class="empty">Aucun projet pour l'instant. Créez-en un à partir d'un modèle pour obtenir un code à transmettre au client.</div>` : list.map(p=>renderProjectCard(p)).join('')}
+  `;
+}
+
+function renderNewProjectForm(){
+  if(state.templates.length===0){
+    return `<div class="card">Créez d'abord un modèle dans l'onglet « Modèles ».</div>`;
+  }
+  return `
+  <div class="card doc">
+    <div class="cx1"></div><div class="cx2"></div>
+    <div class="field">
+      <label>Modèle de cahier des charges</label>
+      <select id="np-template">
+        ${state.templates.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}
+      </select>
+    </div>
+    <div class="field"><label>Nom du projet</label><input type="text" id="np-project" placeholder="ex. Refonte site vitrine — Atelier Dupont" /></div>
+    <div class="field"><label>Nom du client (optionnel)</label><input type="text" id="np-client" placeholder="ex. Marie Dupont" /></div>
+    <div class="row"><button class="btn btn-primary btn-sm" data-action="create-project">Créer le projet</button></div>
+  </div>`;
+}
+
+function renderProjectCard(p){
+  const tpl = state.templates.find(t=>t.id===p.templateId);
+  const done = p.status==='complete';
+  return `
+  <div class="card doc">
+    <div class="cx1"></div><div class="cx2"></div>
+    <div class="card-head">
+      <div>
+        <div class="card-title">${esc(p.projectName||'(sans nom)')}</div>
+        <div class="card-meta">DOC ${p.code} · ${esc(tpl?tpl.name:'Modèle supprimé')}${p.clientName?' · '+esc(p.clientName):''}</div>
+      </div>
+      <span class="badge ${done?'badge-done':'badge-wait'}">${done?'Complété':'En attente'}</span>
+    </div>
+    <div class="card-meta">Créé le ${fmtDate(p.createdAt)}${done?' · Répondu le '+fmtDate(p.submittedAt):''}</div>
+    <div class="row">
+      <button class="btn btn-ghost btn-sm" data-action="copy-instructions" data-code="${p.code}" data-name="${esc(p.projectName)}">Copier les instructions client</button>
+      ${done ? `<button class="btn btn-line btn-sm" data-action="view-responses" data-id="${p.id}">Voir les réponses</button>` : ''}
+      <button class="btn btn-danger btn-sm" data-action="delete-project" data-id="${p.id}">Supprimer</button>
+    </div>
+  </div>`;
+}
+
+function renderTemplatesTab(){
+  return `
+    <div class="row" style="margin:0 0 20px;">
+      <button class="btn btn-primary btn-sm" data-action="new-template">+ Nouveau modèle</button>
+    </div>
+    ${state.templates.length===0 ? `<div class="empty">Aucun modèle. Créez votre premier cahier des charges type.</div>` :
+      state.templates.map(t=>`
+      <div class="card doc">
+        <div class="cx1"></div><div class="cx2"></div>
+        <div class="card-head">
+          <div>
+            <div class="card-title">${esc(t.name)}</div>
+            <div class="card-meta">${t.questions.filter(q=>q.type!=='section').length} question${t.questions.length>1?'s':''} · créé le ${fmtDate(t.createdAt)}</div>
+          </div>
+        </div>
+        ${t.description ? `<div style="font-size:13px;color:var(--mist);margin-top:6px;">${esc(t.description)}</div>` : ''}
+        <div class="row">
+          <button class="btn btn-line btn-sm" data-action="edit-template" data-id="${t.id}">Modifier</button>
+          <button class="btn btn-ghost btn-sm" data-action="duplicate-template" data-id="${t.id}">Dupliquer</button>
+          <button class="btn btn-danger btn-sm" data-action="delete-template" data-id="${t.id}">Supprimer</button>
+        </div>
+      </div>`).join('')}
+  `;
+}
+
+/* ---- template editor ---- */
+function renderTemplateEditor(){
+  const t = state.editingTemplate;
+  return `
+  <div class="shell">
+    <div class="topbar">
+      <div class="brand"><span class="dot"></span><span class="brand-text">Modèle de cahier des charges</span></div>
+      <button class="btn btn-ghost btn-sm" data-action="cancel-edit-template">Annuler</button>
+    </div>
+    <div class="content">
+      <div class="field"><label>Nom du modèle</label><input type="text" id="tpl-name" value="${esc(t.name)}" /></div>
+      <div class="field"><label>Description (visible par le client)</label><textarea id="tpl-desc">${esc(t.description)}</textarea></div>
+
+      <div class="card-meta mono" style="margin:24px 0 10px;">QUESTIONS</div>
+      <div id="qlist">${t.questions.map((q,i)=>renderQuestionRow(q,i,t.questions.length)).join('')}</div>
+
+      <div class="row" style="margin-top:6px;">
+        <button class="btn btn-ghost btn-sm" data-action="add-question" data-type="text">+ Question texte</button>
+        <button class="btn btn-ghost btn-sm" data-action="add-question" data-type="section">+ Titre de section</button>
+      </div>
+
+      <div class="row" style="margin-top:26px;border-top:1px solid var(--line-dim);padding-top:20px;">
+        <button class="btn btn-primary" data-action="save-template">Enregistrer le modèle</button>
+        <button class="btn btn-ghost" data-action="cancel-edit-template">Annuler</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderQuestionRow(q,i,total){
+  const isSection = q.type==='section';
+  const needsOptions = q.type==='select' || q.type==='checkbox';
+  return `
+  <div class="qrow ${isSection?'section-row':''}" data-qid="${q.id}">
+    <div class="qrow-top">
+      <select data-action="q-type" data-qid="${q.id}">
+        <option value="section" ${q.type==='section'?'selected':''}>Titre de section</option>
+        <option value="text" ${q.type==='text'?'selected':''}>Réponse courte</option>
+        <option value="textarea" ${q.type==='textarea'?'selected':''}>Réponse longue</option>
+        <option value="select" ${q.type==='select'?'selected':''}>Choix unique</option>
+        <option value="checkbox" ${q.type==='checkbox'?'selected':''}>Choix multiple</option>
+      </select>
+      <input type="text" data-field="label" data-qid="${q.id}" value="${esc(q.label)}" placeholder="${isSection?'Titre de la section':'Intitulé de la question'}" />
+      <div class="qrow-actions">
+        <button class="icon-btn" data-action="q-up" data-qid="${q.id}" ${i===0?'disabled':''} title="Monter">↑</button>
+        <button class="icon-btn" data-action="q-down" data-qid="${q.id}" ${i===total-1?'disabled':''} title="Descendre">↓</button>
+        <button class="icon-btn" data-action="q-remove" data-qid="${q.id}" title="Supprimer">×</button>
+      </div>
+    </div>
+    ${needsOptions ? `<div class="qrow-opts"><textarea data-field="options" data-qid="${q.id}" placeholder="Une option par ligne">${esc((q.options||[]).join('\n'))}</textarea></div>` : ''}
+    ${!isSection ? `<label class="req-toggle"><input type="checkbox" data-field="required" data-qid="${q.id}" ${q.required?'checked':''}/> Réponse obligatoire</label>` : ''}
+  </div>`;
+}
+
+/* ---- responses view ---- */
+function renderResponsesView(p){
+  const tpl = state.templates.find(t=>t.id===p.templateId);
+  return `
+  <div class="shell">
+    <div class="topbar">
+      <div class="brand"><span class="dot"></span><span class="brand-text">Réponses — ${esc(p.projectName)}</span></div>
+      <button class="btn btn-ghost btn-sm" data-action="back-to-projects">← Retour aux projets</button>
+    </div>
+    <div class="content">
+      <div class="card-meta mono" style="margin-bottom:16px;">DOC ${p.code} · ${tpl?esc(tpl.name):'Modèle supprimé'} · Répondu le ${fmtDate(p.submittedAt)}</div>
+      ${!tpl ? `<div class="empty">Le modèle associé a été supprimé, les réponses brutes restent disponibles ci-dessous.</div>` : ''}
+      ${(tpl?tpl.questions:Object.keys(p.answers||{}).map(k=>({id:k,type:'text',label:k}))).map(q=>{
+        if(q.type==='section') return `<div class="section-div" style="color:var(--line);border-color:var(--line-dim);">${esc(q.label)}</div>`;
+        const ans = p.answers ? p.answers[q.id] : null;
+        const display = Array.isArray(ans) ? (ans.length?ans.join(', '):'—') : (ans || '—');
+        return `<div class="field"><label style="color:var(--mist);">${esc(q.label)}</label><div style="padding:10px 0;border-bottom:1px solid var(--line-dim);white-space:pre-wrap;">${esc(display)}</div></div>`;
+      }).join('')}
+    </div>
+  </div>`;
+}
+
+/* ===================== CLIENT ===================== */
+function renderClientCode(){
+  return `
+  <div class="paper-shell">
+    <div class="paper-top">
+      <span class="mono" style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#8a8367;">CDC · Espace client</span>
+      <button class="paper-link" data-action="go-home">← Retour</button>
+    </div>
+    <div class="code-box">
+      <div class="mono" style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber-dim);">Accès au cahier des charges</div>
+      <p style="font-size:14px;color:#665F4D;margin:14px 0 0;">Saisissez le code de projet transmis par votre agence.</p>
+      <input type="text" id="client-code-input" maxlength="6" placeholder="XXXXXX" autocomplete="off" />
+      ${state.clientError ? `<div class="error-msg">${esc(state.clientError)}</div>` : ''}
+      <button class="btn btn-primary" style="margin-top:10px;" data-action="submit-code">Accéder au questionnaire</button>
+    </div>
+  </div>`;
+}
+
+function renderClientForm(){
+  const p = state.clientProject, t = state.clientTemplate;
+  return `
+  <div class="paper-shell">
+    <div class="paper-top">
+      <span class="mono" style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#8a8367;">CDC · Espace client</span>
+      <button class="paper-link" data-action="go-client">Changer de code</button>
+    </div>
+    <div class="paper-content">
+      <div class="spec-head doc">
+        <div class="cx1" style="color:var(--paper-line);"></div><div class="cx2" style="color:var(--paper-line);"></div>
+        <div class="doc-no">DOC. ${p.code} · RÉV. 1</div>
+        <h1>${esc(t.name)}</h1>
+        ${t.description?`<p>${esc(t.description)}</p>`:''}
+      </div>
+      <form id="client-form">
+        ${t.questions.map(q=>renderClientQuestion(q)).join('')}
+        <div class="row" style="margin-top:30px;">
+          <button type="submit" class="btn btn-primary">Envoyer mes réponses</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
+function renderClientQuestion(q){
+  if(q.type==='section') return `<div class="section-div">${esc(q.label)}</div>`;
+  const reqMark = q.required?'<span class="req">*</span>':'';
+  if(q.type==='text'){
+    return `<div class="pfield"><label>${esc(q.label)}${reqMark}</label><input type="text" data-qid="${q.id}" data-type="text" ${q.required?'required':''}/></div>`;
+  }
+  if(q.type==='textarea'){
+    return `<div class="pfield"><label>${esc(q.label)}${reqMark}</label><textarea data-qid="${q.id}" data-type="textarea" ${q.required?'required':''}></textarea></div>`;
+  }
+  if(q.type==='select'){
+    return `<div class="pfield"><label>${esc(q.label)}${reqMark}</label>
+      <select data-qid="${q.id}" data-type="select" ${q.required?'required':''}>
+        <option value="">— Choisissez —</option>
+        ${(q.options||[]).map(o=>`<option value="${esc(o)}">${esc(o)}</option>`).join('')}
+      </select></div>`;
+  }
+  if(q.type==='checkbox'){
+    return `<div class="pfield"><label>${esc(q.label)}${reqMark}</label>
+      ${(q.options||[]).map((o,i)=>`<div class="check-opt"><input type="checkbox" id="cb_${q.id}_${i}" data-qid="${q.id}" data-type="checkbox" value="${esc(o)}"/><label for="cb_${q.id}_${i}" style="margin:0;font-weight:400;">${esc(o)}</label></div>`).join('')}
+      </div>`;
+  }
+  return '';
+}
+
+function renderClientDone(){
+  return `
+  <div class="paper-shell" style="display:flex;align-items:center;justify-content:center;">
+    <div style="text-align:center;max-width:420px;padding:20px;">
+      <div class="stamp">Complété</div>
+      <h1 style="font-size:24px;margin:26px 0 12px;">Merci, vos réponses ont bien été envoyées.</h1>
+      <p style="color:#665F4D;font-size:14px;line-height:1.6;">Votre agence a maintenant accès à votre cahier des charges et reviendra vers vous prochainement.</p>
+      <button class="btn btn-amber" style="margin-top:20px;" data-action="go-home">Retour à l'accueil</button>
+    </div>
+  </div>`;
+}
+
+/* ===================== CONFIRM MODAL ===================== */
+function renderConfirmModal(){
+  const m = state.confirmModal;
+  return `<div class="modal-bg" data-action="modal-bg">
+    <div class="modal">
+      <h3>${esc(m.title)}</h3>
+      <p style="font-size:13px;color:var(--mist);line-height:1.5;margin:0 0 20px;">${esc(m.body)}</p>
+      <div class="row">
+        <button class="btn btn-danger btn-sm" data-action="modal-confirm">Confirmer</button>
+        <button class="btn btn-ghost btn-sm" data-action="modal-cancel">Annuler</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ===================== SYNC helpers (read DOM into state before structural changes) ===================== */
+function syncTemplateEditorFromDOM(){
+  const t = state.editingTemplate;
+  if(!t) return;
+  const nameEl = document.getElementById('tpl-name');
+  const descEl = document.getElementById('tpl-desc');
+  if(nameEl) t.name = nameEl.value;
+  if(descEl) t.description = descEl.value;
+  t.questions.forEach(q=>{
+    const labelEl = document.querySelector(`[data-field="label"][data-qid="${q.id}"]`);
+    if(labelEl) q.label = labelEl.value;
+    const optsEl = document.querySelector(`[data-field="options"][data-qid="${q.id}"]`);
+    if(optsEl) q.options = optsEl.value.split('\n').map(s=>s.trim()).filter(Boolean);
+    const reqEl = document.querySelector(`[data-field="required"][data-qid="${q.id}"]`);
+    if(reqEl) q.required = reqEl.checked;
+  });
+}
+
+/* ===================== EVENT BINDING ===================== */
+function bindGlobalEvents(){
+  const app = document.getElementById('app');
+
+  app.onclick = async (e)=>{
+    const el = e.target.closest('[data-action]');
+    if(!el) return;
+    const action = el.dataset.action;
+
+    if(action==='go-home'){ state.view='home'; render(); return; }
+    if(action==='go-admin'){ state.view = state.sessionAdminOK ? 'admin' : 'admin-gate'; state.gateError=''; render(); return; }
+    if(action==='go-client'){ state.view='client-code'; state.clientError=''; state.clientProject=null; state.clientTemplate=null; render(); return; }
+
+    if(action==='gate-set'){
+      const p1 = document.getElementById('gate-pass').value.trim();
+      const p2 = document.getElementById('gate-pass-confirm').value.trim();
+      if(p1.length<3){ state.gateError='Le code doit contenir au moins 3 caractères.'; render(); return; }
+      if(p1!==p2){ state.gateError='Les deux codes ne correspondent pas.'; render(); return; }
+      state.adminPass = p1; state.sessionAdminOK = true; state.gateError='';
+      await saveAdminPass();
+      state.view='admin'; render(); return;
+    }
+    if(action==='gate-enter'){
+      const p1 = document.getElementById('gate-pass').value.trim();
+      if(p1 !== state.adminPass){ state.gateError='Code incorrect.'; render(); return; }
+      state.sessionAdminOK = true; state.gateError=''; state.view='admin'; render(); return;
+    }
+
+    if(action==='admin-tab'){ state.adminTab = el.dataset.tab; state.newProjectOpen=false; render(); return; }
+
+    if(action==='new-project-toggle'){ state.newProjectOpen = !state.newProjectOpen; render(); return; }
+    if(action==='create-project'){
+      const tplId = document.getElementById('np-template').value;
+      const name = document.getElementById('np-project').value.trim();
+      const client = document.getElementById('np-client').value.trim();
+      if(!name){ showToast('Indiquez un nom de projet.'); return; }
+      const project = {
+        id: uid('proj'), code: genCode(), templateId: tplId,
+        projectName:name, clientName:client, status:'en_attente',
+        createdAt: Date.now(), submittedAt:null, answers:{}
+      };
+      state.projects.push(project);
+      state.newProjectOpen=false;
+      await saveProjects();
+      render();
+      showToast('Projet créé — code '+project.code);
+      return;
+    }
+    if(action==='copy-instructions'){
+      const code = el.dataset.code, name = el.dataset.name;
+      const text = `Cahier des charges — ${name}\n\nAccédez au formulaire ici : ${window.location.href}\nPuis saisissez le code projet : ${code}`;
+      try{ await navigator.clipboard.writeText(text); showToast('Instructions copiées dans le presse-papiers.'); }
+      catch(e){ showToast('Code projet : '+code); }
+      return;
+    }
+    if(action==='view-responses'){
+      const p = state.projects.find(x=>x.id===el.dataset.id);
+      if(p){ document.getElementById('app').innerHTML = renderResponsesView(p); rebindResponsesBack(); }
+      return;
+    }
+    if(action==='delete-project'){
+      const p = state.projects.find(x=>x.id===el.dataset.id);
+      state.confirmModal = { title:'Supprimer ce projet ?', body:`« ${p?p.projectName:''} » et ses réponses seront définitivement supprimés.`, onConfirm: async ()=>{
+        state.projects = state.projects.filter(x=>x.id!==el.dataset.id);
+        await saveProjects(); render();
+      }};
+      render(); return;
+    }
+
+    if(action==='new-template'){
+      const q = (type,label) => ({id:uid('q'),type,label,required:false,options:[]});
+      state.editingTemplate = { id: uid('tpl'), name:'Nouveau modèle', description:'', createdAt: Date.now(), questions:[q('section','Section 1')] };
+      render(); return;
+    }
+    if(action==='edit-template'){
+      const t = state.templates.find(x=>x.id===el.dataset.id);
+      state.editingTemplate = JSON.parse(JSON.stringify(t));
+      render(); return;
+    }
+    if(action==='duplicate-template'){
+      const t = state.templates.find(x=>x.id===el.dataset.id);
+      const copy = JSON.parse(JSON.stringify(t));
+      copy.id = uid('tpl'); copy.name = copy.name + ' (copie)'; copy.createdAt = Date.now();
+      copy.questions.forEach(q=>q.id=uid('q'));
+      state.templates.push(copy);
+      await saveTemplates(); render();
+      return;
+    }
+    if(action==='delete-template'){
+      const t = state.templates.find(x=>x.id===el.dataset.id);
+      state.confirmModal = { title:'Supprimer ce modèle ?', body:`« ${t?t.name:''} » sera supprimé. Les projets déjà créés à partir de ce modèle garderont leurs réponses.`, onConfirm: async ()=>{
+        state.templates = state.templates.filter(x=>x.id!==el.dataset.id);
+        await saveTemplates(); render();
+      }};
+      render(); return;
+    }
+
+    if(action==='cancel-edit-template'){ state.editingTemplate=null; render(); return; }
+    if(action==='save-template'){
+      syncTemplateEditorFromDOM();
+      const t = state.editingTemplate;
+      if(!t.name.trim()){ showToast('Donnez un nom au modèle.'); return; }
+      const idx = state.templates.findIndex(x=>x.id===t.id);
+      if(idx>=0) state.templates[idx]=t; else state.templates.push(t);
+      state.editingTemplate=null;
+      await saveTemplates(); render();
+      showToast('Modèle enregistré.');
+      return;
+    }
+    if(action==='add-question'){
+      syncTemplateEditorFromDOM();
+      const type = el.dataset.type;
+      state.editingTemplate.questions.push({id:uid('q'),type, label:'', required:false, options: type==='select'||type==='checkbox'?['Option 1']:[]});
+      render(); return;
+    }
+    if(action==='q-remove'){
+      syncTemplateEditorFromDOM();
+      state.editingTemplate.questions = state.editingTemplate.questions.filter(q=>q.id!==el.dataset.qid);
+      render(); return;
+    }
+    if(action==='q-up' || action==='q-down'){
+      syncTemplateEditorFromDOM();
+      const qs = state.editingTemplate.questions;
+      const i = qs.findIndex(q=>q.id===el.dataset.qid);
+      const j = action==='q-up' ? i-1 : i+1;
+      if(j<0||j>=qs.length) return;
+      [qs[i],qs[j]] = [qs[j],qs[i]];
+      render(); return;
+    }
+
+    if(action==='back-to-projects'){ render(); return; }
+
+    if(action==='submit-code'){
+      const code = document.getElementById('client-code-input').value.trim().toUpperCase();
+      const p = state.projects.find(x=>x.code===code);
+      if(!p){ state.clientError='Code introuvable. Vérifiez auprès de votre agence.'; render(); return; }
+      const tpl = state.templates.find(x=>x.id===p.templateId);
+      if(!tpl){ state.clientError="Le modèle associé n'existe plus. Contactez votre agence."; render(); return; }
+      if(p.status==='complete'){ state.view='client-done'; render(); return; }
+      state.clientProject = p; state.clientTemplate = tpl; state.clientError='';
+      state.view='client-form'; render(); return;
+    }
+
+    if(action==='modal-bg' || action==='modal-cancel'){ state.confirmModal=null; render(); return; }
+    if(action==='modal-confirm'){ const cb = state.confirmModal.onConfirm; state.confirmModal=null; if(cb) await cb(); return; }
+  };
+
+  app.onchange = (e)=>{
+    if(e.target.dataset.action==='q-type'){
+      syncTemplateEditorFromDOM();
+      const q = state.editingTemplate.questions.find(x=>x.id===e.target.dataset.qid);
+      q.type = e.target.value;
+      if((q.type==='select'||q.type==='checkbox') && (!q.options || q.options.length===0)) q.options=['Option 1'];
+      render();
+    }
+  };
+
+  app.onsubmit = (e)=>{
+    if(e.target.id==='client-form'){
+      e.preventDefault();
+      submitClientForm();
+    }
+  };
+}
+
+function rebindResponsesBack(){
+  const app = document.getElementById('app');
+  app.onclick = (e)=>{
+    const el = e.target.closest('[data-action]');
+    if(el && el.dataset.action==='back-to-projects'){ render(); }
+  };
+}
+
+async function submitClientForm(){
+  const t = state.clientTemplate, p = state.clientProject;
+  const answers = {};
+  let missing = [];
+  t.questions.forEach(q=>{
+    if(q.type==='section') return;
+    if(q.type==='checkbox'){
+      const boxes = document.querySelectorAll(`[data-qid="${q.id}"][data-type="checkbox"]:checked`);
+      answers[q.id] = Array.from(boxes).map(b=>b.value);
+      if(q.required && answers[q.id].length===0) missing.push(q.label);
+    } else {
+      const el = document.querySelector(`[data-qid="${q.id}"][data-type="${q.type}"]`);
+      answers[q.id] = el ? el.value.trim() : '';
+      if(q.required && !answers[q.id]) missing.push(q.label);
+    }
+  });
+  if(missing.length){
+    showToast('Merci de compléter : '+missing[0]);
+    return;
+  }
+  const idx = state.projects.findIndex(x=>x.id===p.id);
+  state.projects[idx].answers = answers;
+  state.projects[idx].status = 'complete';
+  state.projects[idx].submittedAt = Date.now();
+  await saveProjects();
+  state.view='client-done';
+  render();
+}
+
+loadData();
+</script>
+</body>
+</html>

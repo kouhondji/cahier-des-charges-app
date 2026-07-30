@@ -1,0 +1,13 @@
+{
+  "name": "cahier-des-charges-app",
+  "version": "1.0.0",
+  "description": "Systeme de cahiers des charges interactifs pour clients (modeles reutilisables + tableau de bord)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
