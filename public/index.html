@@ -227,9 +227,12 @@ let state = {
   gateMode:'set', // set | enter
   gateError:'',
   newProjectOpen:false,
+  newProjectMode:'classic', // classic | ai
   clientError:'',
   clientProject:null,
   clientTemplate:null,
+  aiLoading:false,
+  aiError:'',
   toast:null,
   confirmModal:null,
 };
@@ -366,6 +369,8 @@ function render(){
     case 'admin': html = renderAdmin(); break;
     case 'client-code': html = renderClientCode(); break;
     case 'client-form': html = renderClientForm(); break;
+    case 'client-ai-describe': html = renderClientAIDescribe(); break;
+    case 'client-ai-questions': html = renderClientAIQuestions(); break;
     case 'client-done': html = renderClientDone(); break;
   }
   if(state.toast) html += `<div class="toast mono">${esc(state.toast)}</div>`;
@@ -453,18 +458,29 @@ function renderProjectsTab(){
 }
 
 function renderNewProjectForm(){
-  if(state.templates.length===0){
-    return `<div class="card">Créez d'abord un modèle dans l'onglet « Modèles ».</div>`;
-  }
+  const mode = state.newProjectMode;
   return `
   <div class="card doc">
     <div class="cx1"></div><div class="cx2"></div>
     <div class="field">
-      <label>Modèle de cahier des charges</label>
-      <select id="np-template">
-        ${state.templates.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}
-      </select>
+      <label>Type de cahier des charges</label>
+      <div class="row">
+        <button type="button" class="btn ${mode==='classic'?'btn-primary':'btn-line'} btn-sm" data-action="np-set-mode" data-mode="classic">Modèle classique</button>
+        <button type="button" class="btn ${mode==='ai'?'btn-primary':'btn-line'} btn-sm" data-action="np-set-mode" data-mode="ai">🆕 Analyse IA</button>
+      </div>
     </div>
+    ${mode==='classic' ? (
+      state.templates.length===0
+      ? `<div class="empty" style="margin:10px 0;">Créez d'abord un modèle dans l'onglet « Modèles », ou choisissez « Analyse IA » ci-dessus.</div>`
+      : `<div class="field">
+          <label>Modèle de cahier des charges</label>
+          <select id="np-template">
+            ${state.templates.map(t=>`<option value="${t.id}">${esc(t.name)}</option>`).join('')}
+          </select>
+        </div>`
+    ) : `<div class="field" style="font-size:12.5px;color:var(--mist);background:var(--blueprint-light,#E1E9F7);color:#1F3E7A;padding:10px 12px;border-radius:6px;">
+          Le client décrira librement son projet, puis l'IA générera automatiquement des questions de clarification adaptées à son besoin.
+        </div>`}
     <div class="field"><label>Nom du projet</label><input type="text" id="np-project" placeholder="ex. Refonte site vitrine — Atelier Dupont" /></div>
     <div class="field"><label>Nom du client (optionnel)</label><input type="text" id="np-client" placeholder="ex. Marie Dupont" /></div>
     <div class="row"><button class="btn btn-primary btn-sm" data-action="create-project">Créer le projet</button></div>
@@ -472,15 +488,17 @@ function renderNewProjectForm(){
 }
 
 function renderProjectCard(p){
+  const isAI = p.mode==='ai';
   const tpl = state.templates.find(t=>t.id===p.templateId);
   const done = p.status==='complete';
+  const typeLabel = isAI ? '🆕 Analyse IA' : esc(tpl?tpl.name:'Modèle supprimé');
   return `
   <div class="card doc">
     <div class="cx1"></div><div class="cx2"></div>
     <div class="card-head">
       <div>
         <div class="card-title">${esc(p.projectName||'(sans nom)')}</div>
-        <div class="card-meta">DOC ${p.code} · ${esc(tpl?tpl.name:'Modèle supprimé')}${p.clientName?' · '+esc(p.clientName):''}</div>
+        <div class="card-meta">DOC ${p.code} · ${typeLabel}${p.clientName?' · '+esc(p.clientName):''}</div>
       </div>
       <span class="badge ${done?'badge-done':'badge-wait'}">${done?'Complété':'En attente'}</span>
     </div>
@@ -488,6 +506,7 @@ function renderProjectCard(p){
     <div class="row">
       <button class="btn btn-ghost btn-sm" data-action="copy-instructions" data-code="${p.code}" data-name="${esc(p.projectName)}">Copier les instructions client</button>
       ${done ? `<button class="btn btn-line btn-sm" data-action="view-responses" data-id="${p.id}">Voir les réponses</button>` : ''}
+      ${done ? `<button class="btn btn-ghost btn-sm" data-action="download-pdf" data-id="${p.id}">📄 Télécharger en PDF</button>` : ''}
       <button class="btn btn-danger btn-sm" data-action="delete-project" data-id="${p.id}">Supprimer</button>
     </div>
   </div>`;
@@ -574,7 +593,9 @@ function renderQuestionRow(q,i,total){
 
 /* ---- responses view ---- */
 function renderResponsesView(p){
+  const isAI = p.mode==='ai';
   const tpl = state.templates.find(t=>t.id===p.templateId);
+  const questions = isAI ? (p.aiQuestions||[]) : (tpl?tpl.questions:Object.keys(p.answers||{}).map(k=>({id:k,type:'text',label:k})));
   return `
   <div class="shell">
     <div class="topbar">
@@ -582,9 +603,11 @@ function renderResponsesView(p){
       <button class="btn btn-ghost btn-sm" data-action="back-to-projects">← Retour aux projets</button>
     </div>
     <div class="content">
-      <div class="card-meta mono" style="margin-bottom:16px;">DOC ${p.code} · ${tpl?esc(tpl.name):'Modèle supprimé'} · Répondu le ${fmtDate(p.submittedAt)}</div>
-      ${!tpl ? `<div class="empty">Le modèle associé a été supprimé, les réponses brutes restent disponibles ci-dessous.</div>` : ''}
-      ${(tpl?tpl.questions:Object.keys(p.answers||{}).map(k=>({id:k,type:'text',label:k}))).map(q=>{
+      <div class="card-meta mono" style="margin-bottom:10px;">DOC ${p.code} · ${isAI?'🆕 Analyse IA':(tpl?esc(tpl.name):'Modèle supprimé')} · Répondu le ${fmtDate(p.submittedAt)}</div>
+      <div class="row" style="margin-bottom:20px;"><button class="btn btn-line btn-sm" data-action="download-pdf" data-id="${p.id}">📄 Télécharger en PDF</button></div>
+      ${!isAI && !tpl ? `<div class="empty">Le modèle associé a été supprimé, les réponses brutes restent disponibles ci-dessous.</div>` : ''}
+      ${isAI ? `<div class="field"><label style="color:var(--mist);">Description libre fournie par le client</label><div style="padding:10px 0;border-bottom:1px solid var(--line-dim);white-space:pre-wrap;">${esc(p.description||'—')}</div></div>` : ''}
+      ${questions.map(q=>{
         if(q.type==='section') return `<div class="section-div" style="color:var(--line);border-color:var(--line-dim);">${esc(q.label)}</div>`;
         const ans = p.answers ? p.answers[q.id] : null;
         const display = Array.isArray(ans) ? (ans.length?ans.join(', '):'—') : (ans || '—');
@@ -661,6 +684,58 @@ function renderClientQuestion(q){
   return '';
 }
 
+function renderClientAIDescribe(){
+  const p = state.clientProject;
+  return `
+  <div class="paper-shell">
+    <div class="paper-top">
+      <span class="mono" style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#8a8367;">CDC · Espace client</span>
+      <button class="paper-link" data-action="go-client">Changer de code</button>
+    </div>
+    <div class="paper-content">
+      <div class="spec-head doc">
+        <div class="cx1" style="color:var(--paper-line);"></div><div class="cx2" style="color:var(--paper-line);"></div>
+        <div class="doc-no">DOC. ${p.code}</div>
+        <h1>Décrivez votre projet</h1>
+        <p>Expliquez avec vos propres mots ce que vous souhaitez réaliser. Notre intelligence artificielle va lire votre description et vous poser ensuite quelques questions de clarification adaptées à votre besoin précis.</p>
+      </div>
+      <div class="pfield">
+        <label>Décrivez librement votre projet</label>
+        <textarea id="ai-description" rows="8" placeholder="Ex : Je tiens une boutique de vêtements et je voudrais un site pour vendre en ligne, avec un système de livraison..." ${state.aiLoading?'disabled':''}></textarea>
+      </div>
+      ${state.aiError ? `<div class="error-msg">${esc(state.aiError)}</div>` : ''}
+      <div class="row" style="margin-top:20px;">
+        <button class="btn btn-primary" data-action="submit-ai-description" ${state.aiLoading?'disabled':''}>${state.aiLoading?'Analyse en cours…':'Analyser mon besoin'}</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderClientAIQuestions(){
+  const p = state.clientProject;
+  return `
+  <div class="paper-shell">
+    <div class="paper-top">
+      <span class="mono" style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#8a8367;">CDC · Espace client</span>
+      <button class="paper-link" data-action="go-client">Changer de code</button>
+    </div>
+    <div class="paper-content">
+      <div class="spec-head doc">
+        <div class="cx1" style="color:var(--paper-line);"></div><div class="cx2" style="color:var(--paper-line);"></div>
+        <div class="doc-no">DOC. ${p.code} · RÉV. 1</div>
+        <h1>Quelques précisions sur votre projet</h1>
+        <p>D'après votre description, voici les points qu'il est utile de clarifier.</p>
+      </div>
+      <form id="client-ai-form">
+        ${(p.aiQuestions||[]).map(q=>renderClientQuestion(q)).join('')}
+        <div class="row" style="margin-top:30px;">
+          <button type="submit" class="btn btn-primary">Envoyer mes réponses</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
 function renderClientDone(){
   return `
   <div class="paper-shell" style="display:flex;align-items:center;justify-content:center;">
@@ -668,7 +743,10 @@ function renderClientDone(){
       <div class="stamp">Complété</div>
       <h1 style="font-size:24px;margin:26px 0 12px;">Merci, vos réponses ont bien été envoyées.</h1>
       <p style="color:#665F4D;font-size:14px;line-height:1.6;">Votre agence a maintenant accès à votre cahier des charges et reviendra vers vous prochainement.</p>
-      <button class="btn btn-amber" style="margin-top:20px;" data-action="go-home">Retour à l'accueil</button>
+      <div class="row" style="justify-content:center;margin-top:20px;">
+        <button class="btn btn-line" data-action="download-pdf">📄 Télécharger mon cahier des charges (PDF)</button>
+        <button class="btn btn-amber" data-action="go-home">Retour à l'accueil</button>
+      </div>
     </div>
   </div>`;
 }
@@ -737,16 +815,29 @@ function bindGlobalEvents(){
     if(action==='admin-tab'){ state.adminTab = el.dataset.tab; state.newProjectOpen=false; render(); return; }
 
     if(action==='new-project-toggle'){ state.newProjectOpen = !state.newProjectOpen; render(); return; }
+    if(action==='np-set-mode'){ state.newProjectMode = el.dataset.mode; render(); return; }
     if(action==='create-project'){
-      const tplId = document.getElementById('np-template').value;
+      const mode = state.newProjectMode;
       const name = document.getElementById('np-project').value.trim();
       const client = document.getElementById('np-client').value.trim();
       if(!name){ showToast('Indiquez un nom de projet.'); return; }
-      const project = {
-        id: uid('proj'), code: genCode(), templateId: tplId,
-        projectName:name, clientName:client, status:'en_attente',
-        createdAt: Date.now(), submittedAt:null, answers:{}
-      };
+      let project;
+      if(mode==='ai'){
+        project = {
+          id: uid('proj'), code: genCode(), mode:'ai', templateId:null,
+          projectName:name, clientName:client, status:'en_attente',
+          createdAt: Date.now(), submittedAt:null,
+          description:null, aiQuestions:null, answers:{}
+        };
+      } else {
+        const tplSel = document.getElementById('np-template');
+        if(!tplSel){ showToast('Créez d\'abord un modèle, ou choisissez « Analyse IA ».'); return; }
+        project = {
+          id: uid('proj'), code: genCode(), mode:'classic', templateId: tplSel.value,
+          projectName:name, clientName:client, status:'en_attente',
+          createdAt: Date.now(), submittedAt:null, answers:{}
+        };
+      }
       state.projects.push(project);
       state.newProjectOpen=false;
       await saveProjects();
@@ -842,11 +933,68 @@ function bindGlobalEvents(){
       const code = document.getElementById('client-code-input').value.trim().toUpperCase();
       const p = state.projects.find(x=>x.code===code);
       if(!p){ state.clientError='Code introuvable. Vérifiez auprès de votre agence.'; render(); return; }
+      state.clientError='';
+      if(p.status==='complete'){ state.clientProject=p; state.view='client-done'; render(); return; }
+      if(p.mode==='ai'){
+        state.clientProject = p; state.aiError='';
+        state.view = (p.aiQuestions && p.aiQuestions.length) ? 'client-ai-questions' : 'client-ai-describe';
+        render(); return;
+      }
       const tpl = state.templates.find(x=>x.id===p.templateId);
       if(!tpl){ state.clientError="Le modèle associé n'existe plus. Contactez votre agence."; render(); return; }
-      if(p.status==='complete'){ state.view='client-done'; render(); return; }
-      state.clientProject = p; state.clientTemplate = tpl; state.clientError='';
+      state.clientProject = p; state.clientTemplate = tpl;
       state.view='client-form'; render(); return;
+    }
+    if(action==='submit-ai-description'){
+      const textEl = document.getElementById('ai-description');
+      const description = textEl.value.trim();
+      if(!description){ showToast('Décrivez votre projet avant de continuer.'); return; }
+      state.aiLoading = true; state.aiError=''; render();
+      try{
+        const res = await fetch('/api/ai/questions', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({ description })
+        });
+        const data = await res.json();
+        if(!res.ok || !data.questions || !data.questions.length){
+          throw new Error(data.message || 'Réponse invalide de l\'IA.');
+        }
+        const p = state.clientProject;
+        const idx = state.projects.findIndex(x=>x.id===p.id);
+        state.projects[idx].description = description;
+        state.projects[idx].aiQuestions = data.questions;
+        state.clientProject = state.projects[idx];
+        await saveProjects();
+        state.aiLoading=false;
+        state.view='client-ai-questions';
+        render();
+      }catch(err){
+        state.aiLoading=false;
+        state.aiError = "L'analyse a échoué (" + err.message + "). Réessayez.";
+        render();
+      }
+      return;
+    }
+    if(action==='download-pdf'){
+      const p = el.dataset.id ? state.projects.find(x=>x.id===el.dataset.id) : state.clientProject;
+      if(!p) return;
+      try{
+        const payload = buildPdfPayload(p);
+        const res = await fetch('/api/pdf', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify(payload)
+        });
+        if(!res.ok) throw new Error('pdf_failed');
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `cahier-des-charges-${p.code}.pdf`;
+        document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+      }catch(e){
+        showToast('Le téléchargement du PDF a échoué.');
+      }
+      return;
     }
 
     if(action==='modal-bg' || action==='modal-cancel'){ state.confirmModal=null; render(); return; }
@@ -868,6 +1016,10 @@ function bindGlobalEvents(){
       e.preventDefault();
       submitClientForm();
     }
+    if(e.target.id==='client-ai-form'){
+      e.preventDefault();
+      submitAIQuestionsForm();
+    }
   };
 }
 
@@ -877,6 +1029,73 @@ function rebindResponsesBack(){
     const el = e.target.closest('[data-action]');
     if(el && el.dataset.action==='back-to-projects'){ render(); }
   };
+}
+
+function buildPdfPayload(p){
+  const meta = [`DOC. ${p.code}`, p.clientName?`Client : ${p.clientName}`:null, `Date : ${fmtDate(p.submittedAt||p.createdAt)}`].filter(Boolean);
+  const sections = [];
+  if(p.mode==='ai'){
+    sections.push({ heading:'Description libre du besoin', items:[{ label:'Description fournie par le client', answer:p.description||'—' }] });
+    let current = { heading:'Questions de clarification (générées par IA)', items:[] };
+    (p.aiQuestions||[]).forEach(q=>{
+      if(q.type==='section'){
+        if(current.items.length) sections.push(current);
+        current = { heading:q.label, items:[] };
+        return;
+      }
+      const ans = p.answers ? p.answers[q.id] : null;
+      const display = Array.isArray(ans) ? (ans.length?ans.join(', '):'—') : (ans || '—');
+      current.items.push({ label:q.label, answer:display });
+    });
+    if(current.items.length) sections.push(current);
+  } else {
+    const tpl = state.templates.find(t=>t.id===p.templateId);
+    let current = null;
+    (tpl?tpl.questions:[]).forEach(q=>{
+      if(q.type==='section'){
+        if(current && current.items.length) sections.push(current);
+        current = { heading:q.label, items:[] };
+        return;
+      }
+      const ans = p.answers ? p.answers[q.id] : null;
+      const display = Array.isArray(ans) ? (ans.length?ans.join(', '):'—') : (ans || '—');
+      if(!current) current = { heading:'Informations', items:[] };
+      current.items.push({ label:q.label, answer:display });
+    });
+    if(current && current.items.length) sections.push(current);
+  }
+  return { title:`Cahier des charges — ${p.projectName||'Projet'}`, meta, sections };
+}
+
+async function submitAIQuestionsForm(){
+  const p = state.clientProject;
+  const questions = p.aiQuestions || [];
+  const answers = {};
+  let missing = [];
+  questions.forEach(q=>{
+    if(q.type==='section') return;
+    if(q.type==='checkbox'){
+      const boxes = document.querySelectorAll(`[data-qid="${q.id}"][data-type="checkbox"]:checked`);
+      answers[q.id] = Array.from(boxes).map(b=>b.value);
+      if(q.required && answers[q.id].length===0) missing.push(q.label);
+    } else {
+      const el = document.querySelector(`[data-qid="${q.id}"][data-type="${q.type}"]`);
+      answers[q.id] = el ? el.value.trim() : '';
+      if(q.required && !answers[q.id]) missing.push(q.label);
+    }
+  });
+  if(missing.length){
+    showToast('Merci de compléter : '+missing[0]);
+    return;
+  }
+  const idx = state.projects.findIndex(x=>x.id===p.id);
+  state.projects[idx].answers = answers;
+  state.projects[idx].status = 'complete';
+  state.projects[idx].submittedAt = Date.now();
+  state.clientProject = state.projects[idx];
+  await saveProjects();
+  state.view='client-done';
+  render();
 }
 
 async function submitClientForm(){

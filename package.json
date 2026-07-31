@@ -8,6 +8,8 @@
     "dev": "node server.js"
   },
   "dependencies": {
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "@anthropic-ai/sdk": "^0.32.0",
+    "pdfkit": "^0.15.0"
   }
 }
